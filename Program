@@ -1,0 +1,154 @@
+*/
+#include <Mouse.h>
+unsigned long millisStart;
+long MouseX = 0;
+long MouseY = 0;
+char stat, x, y;
+
+byte PS2ReadByte = 0;
+
+#define PS2CLOCK  3  // Clock signal (CLK) to digital pin 6 of Arduino.
+#define PS2DATA   4  // Data to digital pin 5 of Arduino.
+
+//___________.
+
+
+void PS2GoHi(int pin) {
+  pinMode(pin, INPUT);
+  digitalWrite(pin, HIGH);
+}
+
+void PS2GoLo(int pin) {
+  pinMode(pin, OUTPUT);
+  digitalWrite(pin, LOW);
+}
+
+void PS2Write(unsigned char data) {
+  unsigned char parity = 1;
+
+  PS2GoHi(PS2DATA);
+  PS2GoHi(PS2CLOCK);
+  delayMicroseconds(300);
+  PS2GoLo(PS2CLOCK);
+  delayMicroseconds(300);
+  PS2GoLo(PS2DATA);
+  delayMicroseconds(10);
+  PS2GoHi(PS2CLOCK);
+
+  while (digitalRead(PS2CLOCK) == HIGH);
+
+  for (int i = 0; i < 8; i++) {
+    if (data & 0x01) PS2GoHi(PS2DATA);
+    else PS2GoLo(PS2DATA);
+    while (digitalRead(PS2CLOCK) == LOW);
+    while (digitalRead(PS2CLOCK) == HIGH);
+    parity ^= (data & 0x01);
+    data = data >> 1;
+  }
+
+  if (parity) PS2GoHi(PS2DATA);
+  else PS2GoLo(PS2DATA);
+
+  while (digitalRead(PS2CLOCK) == LOW);
+  while (digitalRead(PS2CLOCK) == HIGH);
+
+  PS2GoHi(PS2DATA);
+  delayMicroseconds(50);
+
+  while (digitalRead(PS2CLOCK) == HIGH);
+  while ((digitalRead(PS2CLOCK) == LOW) || (digitalRead(PS2DATA) == LOW));
+
+  PS2GoLo(PS2CLOCK);
+}
+
+unsigned char PS2Read(void) {
+  unsigned char data = 0, bit = 1;
+
+  PS2GoHi(PS2CLOCK);
+  PS2GoHi(PS2DATA);
+  delayMicroseconds(50);
+  while (digitalRead(PS2CLOCK) == HIGH);
+
+  delayMicroseconds(5);
+  while (digitalRead(PS2CLOCK) == LOW);
+
+  for (int i = 0; i < 8; i++) {
+    while (digitalRead(PS2CLOCK) == HIGH);
+    if (digitalRead(PS2DATA) == HIGH) data |= bit;
+    while (digitalRead(PS2CLOCK) == LOW);
+    bit = bit << 1;
+  }
+
+  while (digitalRead(PS2CLOCK) == HIGH);
+  while (digitalRead(PS2CLOCK) == LOW);
+  while (digitalRead(PS2CLOCK) == HIGH);
+  while (digitalRead(PS2CLOCK) == LOW);
+
+  PS2GoLo(PS2CLOCK);
+
+  return data;
+}
+
+void PS2MouseInit(void) {
+  PS2Write(0xFF);
+  for (int i = 0; i < 3; i++) PS2Read();
+  PS2Write(0xF0);
+  PS2Read();
+  delayMicroseconds(100);
+}
+
+void PS2MousePos(char &stat, char &x, char &y) {
+  PS2Write(0xEB);
+  PS2Read();
+  stat = PS2Read();
+  x = PS2Read();
+  y = PS2Read();
+}
+
+//___________.
+
+void setup() {
+ Mouse.begin();
+  Serial.begin(9600);
+}
+
+void loop() {
+
+  if (millis() - millisStart > 30) {
+
+    PS2MousePos(stat, x, y); // Получаем данные от мыши.
+
+
+    
+//       Serial.print(stat, BIN);
+if (x != 0 || y != 0) {       Serial.print("\tdelta X=");
+       Serial.print(x, DEC);
+       Serial.print("\tdelta Y=");
+       Serial.println(y, DEC);
+}
+
+
+    if (x != 0) { // Если - обнаружено движение мыши, по горизонтали.
+      MouseX += x;
+
+      // Для ограничения диапазона значений - "MouseX"
+      // Нижняя и верхняя - граница,(коридор) допустимых значений.
+      MouseX = constrain(MouseX, -500, 500);
+
+      // Преобразовываем значение переменной, из одного диапазона в другой.
+ //     int valHORIZONTAL = map(MouseX, -500, 500, 0, 180);
+    }
+    else {MouseX = 0;}
+
+
+    if (y != 0) { // Если - обнаружено движение мыши, по вертикали.
+      MouseY += y;
+      MouseY = constrain(MouseY, -500, 500);
+ //     int valVERTICAL = map(MouseY, -500, 500, 0, 180);
+    }
+    else {MouseY = 0;}
+    Mouse.move(MouseX, MouseY, 0);
+
+    millisStart = millis();
+  }
+}
